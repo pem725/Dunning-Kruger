@@ -27,14 +27,19 @@ ui <- fluidPage(
         sidebarPanel(
             sliderInput("N",
                         "Sample Size:",
-                        min = 100,
-                        max = 5000,
-                        value = 300),
+                        min = 40,
+                        max = 1000,
+                        value = 84),
             sliderInput("rxx",
-                        "Reliability of Perceived Ability:",
+                        "Relationship Between Actual and Perceived Abilities:",
                         min = 0,
                         max = 1,
-                        value = .7)
+                        value = .7),
+            sliderInput("bias",
+                        "Bias in Self-Reporting Ability (Percent):",
+                        min=0,
+                        max=100,
+                        value=0)
         ),
 
         # Show a plot of the generated distribution
@@ -55,7 +60,7 @@ server <- function(input, output) {
     df.l <- reactive({
         Noise <- rnorm(input$N)
         Ab <- rnorm(input$N)
-        PerAb <- scale(Ab)*sqrt(input$rxx) + scale(residuals(lm(Noise~Ab))) * sqrt(1-input$rxx)
+        PerAb <- scale(Ab)*sqrt(input$rxx) + (scale(residuals(lm(Noise~Ab))) * sqrt(1-input$rxx)) - (input$bias/100*scale(Ab))
         Ab.quant <- as.numeric(as.character(split_quantile(Ab,4)))
         Ab.thirds <- split_quantile(Ab,3)
         Ab.perc <- percentile(Ab)
@@ -70,7 +75,7 @@ server <- function(input, output) {
     df.w <- reactive({
         Noise <- rnorm(input$N)
         Ab <- rnorm(input$N)
-        PerAb <- scale(Ab)*sqrt(input$rxx) + scale(residuals(lm(Noise~Ab))) * sqrt(1-input$rxx)
+        PerAb <- scale(Ab)*sqrt(input$rxx) + (scale(residuals(lm(Noise~Ab))) * sqrt(1-input$rxx)) - (input$bias/100*scale(Ab))
         Ab.quant <- as.numeric(as.character(split_quantile(Ab,4)))
         Ab.thirds <- as.numeric(as.character(split_quantile(Ab,3)))
         Ab.perc <- percentile(Ab)
@@ -79,10 +84,13 @@ server <- function(input, output) {
         PerAb.perc <- percentile(PerAb)
         Delta <- PerAb.perc - Ab.perc
         #df.w <- data.frame(Noise,Ab,PerAb,Ab.quant,Ab.thirds,Ab.perc,PerAb.quant,PerAb.thirds,PerAb.perc,Delta)
-        data.frame(Ability=Ab.perc,Perception=PerAb.perc,Thirds=Ab.thirds,Delta=Delta)
+        data.frame(Ability=Ab.perc,Perception=PerAb.perc,Quants=Ab.quant,Thirds=Ab.thirds,Delta=Delta)
     })
     
     output$p1 <- renderPlot({
+        #df.w <- df.w()
+        #df.w.1 <- df.w[df.w$Quants==1,]
+        h2.t <- t.test(Pair(Ability, Perception)~1, data=df.w()[df.w()$Quants==1,])
         p1 <- ggplot(df.l(),aes(x=Qtls,y=Percs,colour=Meas)) + 
             stat_summary(fun="mean", geom="line", size=2, aes(group=factor(Meas))) + 
             stat_summary(fun="mean", geom = "point", size=5) +
@@ -94,7 +102,9 @@ server <- function(input, output) {
                   axis.text = element_text(face="bold", size=20),
                   axis.ticks.x = element_blank()) +
             scale_x_continuous(name=NULL,breaks=c(1.1,2,3,3.9),labels = c("Bottom\nQuartile","2nd\nQuartile","3rd\nQuartile","Top\nQuartile")) +
-            scale_y_continuous(breaks=seq(0,100,10)) + theme_xkcd()
+            scale_y_continuous(breaks=seq(0,100,10)) + 
+            annotate("text", x=1.2, y=80, size=7,label=paste("t(",input$N - 1,") = ",round(h2.t$statistic,2), "\np = ",round(h2.t$p.value,2),sep="")) +
+            theme_xkcd()
         plot(p1)
     })
     
